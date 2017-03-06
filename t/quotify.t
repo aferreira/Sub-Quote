@@ -76,6 +76,7 @@ BEGIN {
 my @numbers = (
   -20 .. 20,
   (map 1 / $_, -10 .. -2, 2 .. 10),
+  9**9**9, sin(9**9**9),
 );
 
 my @strings = (
@@ -100,8 +101,11 @@ if (HAVE_UTF8) {
     for @utf8_strings;
 }
 
+my @booleans = (!1, !0);
+
 my @quotify = (
   undef,
+  @booleans,
   (map {
     my $used_as_string = $_;
     my $string = "$used_as_string";

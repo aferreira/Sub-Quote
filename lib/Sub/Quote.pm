@@ -30,9 +30,14 @@ sub quotify {
   # numeric detection
   : (length( (my $dummy = '') & $value )
     && 0 + $value eq $value
-    && $value * 0 == 0
-  ) ? $value
-  : _HAVE_PERLSTRING  ? B::perlstring($value)
+  ) ? (
+    $value != $value ? 'CORE::sin(9**9**9)' # nan
+    : $value == 9**9**9 ? '(9**9**9)'      # inf
+    : $value == -9**9**9 ? '(-9**9**9)'    # -inf
+    : $value                               # number
+  )
+  : !length($value) && eval { use warnings 'FATAL' => 'numeric'; $value == 0 } ? '(!1)' # false
+  : _HAVE_PERLSTRING ? B::perlstring($value)
   : qq["\Q$value\E"];
 }
 
