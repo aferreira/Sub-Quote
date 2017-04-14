@@ -170,11 +170,83 @@ is scalar @stuff, 3, 'qsub only accepts a single parameter';
   my @warnings;
   local $ENV{SUB_QUOTE_DEBUG} = 1;
   local $SIG{__WARN__} = sub { push @warnings, @_ };
-  my $sub = quote_sub q{ "this is in the quoted sub" };
-  $sub->();
+
+  quote_sub(q{ "this is in the quoted sub" })->();
   like $warnings[0],
     qr/sub\s*{.*this is in the quoted sub/s,
-    'got debug info with SUB_QUOTE_DEBUG';
+    "SUB_QUOTE_DEBUG - package doesn't match anon other";
+  is scalar @warnings, 1,
+    'single debug warning';
+
+  $ENV{SUB_QUOTE_DEBUG} = 'Some::Package::';
+
+  @warnings = ();
+  quote_sub(q{ "this is in the quoted sub" })->();
+  is scalar @warnings, 0,
+    "SUB_QUOTE_DEBUG - package doesn't match anon other";
+
+  @warnings = ();
+  quote_sub('Some::Package::etc', q{ "this is in the quoted sub" })->();
+  like $warnings[0],
+    qr/this is in the quoted sub/s,
+    "SUB_QUOTE_DEBUG - package matches";
+
+  @warnings = ();
+  quote_sub(q{ "this is in the quoted sub" }, {}, { package => 'Some::Package' })->();
+  like $warnings[0],
+    qr/this is in the quoted sub/s,
+    "SUB_QUOTE_DEBUG - package matches anon";
+
+  $ENV{SUB_QUOTE_DEBUG} = 'etc';
+
+  @warnings = ();
+  quote_sub(q{ "this is in the quoted sub" })->();
+  is scalar @warnings, 0,
+    "SUB_QUOTE_DEBUG - sub name doesn't match anon";
+
+  @warnings = ();
+  quote_sub('Some::Package::woop', q{ "this is in the quoted sub" })->();
+  is scalar @warnings, 0,
+    "SUB_QUOTE_DEBUG - sub name doesn't match other";
+
+  @warnings = ();
+  quote_sub('Some::Package::etc', q{ "this is in the quoted sub" })->();
+  like $warnings[0],
+    qr/this is in the quoted sub/s,
+    'SUB_QUOTE_DEBUG - sub name matches';
+
+  @warnings = ();
+  quote_sub('Some::Other::Package::etc', q{ "this is in the quoted sub" })->();
+  like $warnings[0],
+    qr/this is in the quoted sub/s,
+    'SUB_QUOTE_DEBUG - sub name matches';
+
+  $ENV{SUB_QUOTE_DEBUG} = 'Some::Package::foo';
+
+  @warnings = ();
+  quote_sub('Some::Package::foo', q{ "this is in the quoted sub" })->();
+  like $warnings[0],
+    qr/this is in the quoted sub/s,
+    'SUB_QUOTE_DEBUG - fully qualified matches';
+
+  @warnings = ();
+  quote_sub('Some::Other::Package::foo', q{ "this is in the quoted sub" })->();
+  is scalar @warnings,
+    0,
+    "SUB_QUOTE_DEBUG - fully qualified doesn't match other";
+
+  $ENV{SUB_QUOTE_DEBUG} = '/quoted/';
+
+  @warnings = ();
+  quote_sub('Some::Package::quoted', q{ "this sub should not match" })->();
+  is scalar @warnings,
+    0,
+    "SUB_QUOTE_DEBUG - regex doesn't match name";
+
+  quote_sub(q{ "this is in the quoted sub" })->();
+  like $warnings[0],
+    qr/this is in the quoted sub/s,
+    "SUB_QUOTE_DEBUG - regex matches code";
 }
 
 {

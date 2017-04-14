@@ -217,7 +217,25 @@ sub unquote_sub {
       . "  }".($name ? "\n  \$\$_UNQUOTED = \\&${name}" : '') . ";\n"
       . "}\n"
       . "1;\n";
-    $ENV{SUB_QUOTE_DEBUG} && warn $make_sub;
+    if (my $debug = $ENV{SUB_QUOTE_DEBUG}) {
+      if ($debug =~ m{^([^\W\d]\w*(?:::\w+)*(?:::)?)$}) {
+        my $filter = $1;
+        my $match
+          = $filter =~ /::$/ ? $package.'::'
+          : $filter =~ /::/  ? $package.'::'.($name||'__ANON__')
+          : ($name||'__ANON__');
+        warn $make_sub
+          if $match eq $filter;
+      }
+      elsif ($debug =~ m{^/(.*)/$}) {
+        my $filter = $1;
+        warn $make_sub
+          if $code =~ $filter;
+      }
+      else {
+        warn $make_sub;
+      }
+    }
     {
       no strict 'refs';
       local *{"${package}::${name}"} if $name;
@@ -415,6 +433,37 @@ Exported by default.
 Arguments: $identifier
 
 Sanitizes a value so that it can be used in an identifier.
+
+=head1 ENVIRONMENT
+
+=head2 SUB_QUOTE_DEBUG
+
+Causes code to be output to C<STDERR> before being evaled.  Several forms are
+supported:
+
+=over 4
+
+=item C<1>
+
+All subs will be output.
+
+=item C</foo/>
+
+Subs will be output if their code matches the given regular expression.
+
+=item C<simple_identifier>
+
+Any sub with the given name will be output.
+
+=item C<Full::identifier>
+
+A sub matching the full name will be output.
+
+=item C<Package::Name::>
+
+Any sub in the given package (including anonymous subs) will be output.
+
+=back
 
 =head1 CAVEATS
 
