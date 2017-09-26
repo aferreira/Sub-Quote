@@ -13,6 +13,7 @@ BEGIN { our @CARP_NOT = qw(Sub::Defer) }
 use B ();
 BEGIN {
   *_HAVE_PERLSTRING = defined &B::perlstring ? sub(){1} : sub(){0};
+  *_BITWISE_CHECK_UTF8 = "$]" >= 5.017001 ? sub(){1} : sub(){0};
 }
 
 our $VERSION = '2.004000';
@@ -28,7 +29,9 @@ sub quotify {
   no warnings 'numeric';
   ! defined $value     ? 'undef()'
   # numeric detection
-  : (length( (my $dummy = '') & $value )
+  : (
+    (_BITWISE_CHECK_UTF8 ? !utf8::is_utf8($value) : 1)
+    && length( (my $dummy = '') & $value )
     && 0 + $value eq $value
     && $value * 0 == 0
   ) ? $value
