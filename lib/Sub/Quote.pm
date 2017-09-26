@@ -114,6 +114,8 @@ sub quote_sub {
     name     => $name,
     code     => $code,
     captures => $captures,
+    (exists $options->{file} ? $options->{file} : ()),
+    (exists $options->{line} ? $options->{line} : ()),
     package      => (exists $options->{package}      ? $options->{package}      : $caller[0]),
     hints        => (exists $options->{hints}        ? $options->{hints}        : $caller[8]),
     warning_bits => (exists $options->{warning_bits} ? $options->{warning_bits} : $caller[9]),
@@ -150,8 +152,20 @@ sub quote_sub {
 sub _context {
   my $info = shift;
   $info->{context} ||= do {
-    my ($package, $hints, $warning_bits, $hintshash)
-      = @{$info}{qw(package hints warning_bits hintshash)};
+    my ($package, $hints, $warning_bits, $hintshash, $file, $line)
+      = @{$info}{qw(package hints warning_bits hintshash file line)};
+
+    $line ||= 1
+      if $file;
+
+    my $line_mark = '';
+    if ($line) {
+      $line_mark = "#line ".($line-1);
+      if ($file) {
+        $line_mark .= qq{ "$file"};
+      }
+      $line_mark .= "\n";
+    }
 
     $info->{context}
       ="# BEGIN quote_sub PRELUDE\n"
@@ -165,6 +179,7 @@ sub _context {
         keys %$hintshash)
       ."  );\n"
       ."}\n"
+      .$line_mark
       ."# END quote_sub PRELUDE\n";
   };
 }
