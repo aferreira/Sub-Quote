@@ -14,17 +14,28 @@ use Sub::Quote qw(
 
 sub _dump {
   my $value = shift;
+  if (!defined $value) {
+    return 'undef';
+  }
+  elsif (is_strict_numeric($value)) {
+    return "$value";
+  }
   local $Data::Dumper::Terse = 1;
   local $Data::Dumper::Useqq = 1;
-  my $d = Data::Dumper::Dumper($value);
+  my $d = Data::Dumper::Dumper("$value");
   $d =~ s/\s+$//;
   $d;
 }
 
 sub is_numeric {
-  my $val = shift;
-  my $sv = B::svref_2object(\$val);
-  !!($sv->FLAGS & ( B::SVp_IOK | B::SVp_NOK ) )
+  my $flags = B::svref_2object(\($_[0]))->FLAGS;
+  !!( $flags & ( B::SVp_IOK | B::SVp_NOK ) )
+}
+
+sub is_strict_numeric {
+  my $flags = B::svref_2object(\($_[0]))->FLAGS;
+
+  !!( $flags & ( B::SVp_IOK | B::SVp_NOK ) && !( $flags & B::SVp_POK ) )
 }
 
 my %flags;
@@ -54,9 +65,18 @@ my %flags;
   }
 }
 sub flags {
-  my $val = shift;
-  my $flags = B::svref_2object(\$val)->FLAGS;
+  my $flags = B::svref_2object(\($_[0]))->FLAGS;
   join ' ', sort grep $flags & $flags{$_}, keys %flags;
+}
+
+# unique values taking flags into account
+sub _uniq {
+  my %s;
+  grep {
+    my $copy = $_;
+    my $key = defined $_ ? flags($_).'|'.(HAVE_UTF8 && utf8::is_utf8($_) ? 1 : 0)."|$copy" : '';
+    !$s{$key}++;
+  } @_;
 }
 
 BEGIN {
@@ -75,17 +95,24 @@ BEGIN {
 
 my @numbers = (
   -20 .. 20,
+  qw(00 01 .0 .1 0.0 0.00 00.00 0.10 0.101 1e5 1e-5), '0 but true',
   (map 1 / $_, -10 .. -2, 2 .. 10),
   9**9**9, sin(9**9**9),
 );
 
 my @strings = (
+  "",
   "\x00",
+  '"', "'",
+  "\\",
+  '$',
   "a",
+  "\xC4",
   "\xC3\x84",
   "\xE8",
   "\xFC",
   "\xFF",
+  "\x{ABCD}",
   "\x{1F4A9}",
 );
 
@@ -107,9 +134,10 @@ my @quotify = (
   undef,
   @booleans,
   (map {
-    my $used_as_string = $_;
-    my $string = "$used_as_string";
-    ($_, $used_as_string, $string);
+    my $indeterminate = $_;
+    my $number = $indeterminate + 0;
+    my $string = $indeterminate . "";
+    ($number, $indeterminate, $string);
   } @numbers),
   @strings,
   @utf8_strings,
@@ -117,15 +145,18 @@ my @quotify = (
 
 my $eval_utf8;
 
-for my $value (@quotify) {
+for my $value (_uniq @quotify) {
   my $value_name
     = _dump($value)
     . (HAVE_UTF8 && utf8::is_utf8($value) ? ' utf8' : '')
+    . (is_strict_numeric($value) ? ' pure' : '')
     . (is_numeric($value) ? ' num' : '');
 
   my $quoted = quotify(my $copy = $value);
   utf8::downgrade($quoted, 1)
     if HAVE_UTF8;
+
+  note "quotified as $quoted";
 
   is flags($copy), flags($value),
     "$value_name: quotify doesn't modify input";
@@ -133,20 +164,37 @@ for my $value (@quotify) {
   my $evaled;
   eval "\$evaled = $quoted; 1" or die $@;
 
-  is is_numeric($evaled), is_numeric($value),
-    "$value_name: numeric status maintained";
+  for my $check (
+    [ $evaled ],
+    #( HAVE_UTF8 ? [ eval_utf8($quoted), ' under utf8' ] : ()),
+  ) {
+    my ($check_value, $suffix) = @$check;
+    $suffix ||= '';
 
-  is $value, $evaled,
-    "$value_name: value maintained";
+    if (is_strict_numeric($value)) {
+      ok is_strict_numeric($check_value),
+        "$value_name: numeric status maintained$suffix";
+    }
 
-  if (HAVE_UTF8) {
-    my $utf8_evaled = eval_utf8($quoted);
+    if (is_numeric($value)) {
+      if ($value == $value) {
+        cmp_ok $check_value, '==', $value,
+          "$value_name: numeric value maintained$suffix";
+      }
+      else {
+        cmp_ok $check_value, '!=', $check_value,
+          "$value_name: numeric value maintained$suffix";
+      }
+    }
 
-    is is_numeric($value), is_numeric($utf8_evaled),
-      "$value_name: numeric status maintained under utf8";
-
-    is $value, $utf8_evaled,
-      "$value_name: value maintained under utf8";
+    if (defined $value) {
+      cmp_ok $check_value, 'eq', $value,
+        "$value_name: string value maintained$suffix";
+    }
+    else {
+      is $check_value, undef,
+        "$value_name: undef maintained$suffix";
+    }
   }
 }
 

@@ -34,7 +34,12 @@ sub quotify {
     $value != $value ? 'CORE::sin(9**9**9)' # nan
     : $value == 9**9**9 ? '(9**9**9)'      # inf
     : $value == -9**9**9 ? '(-9**9**9)'    # -inf
-    : $value                               # number
+    : int($value) == $value ? $value       # integer
+    : do {
+      my $float = sprintf('%.20f', $value);
+      $float =~ s/(\.[0-9]+?)0+\z/$1/;
+      $float;
+    }
   )
   : !length($value) && eval { use warnings 'FATAL' => 'numeric'; $value == 0 } ? '(!1)' # false
   : _HAVE_PERLSTRING ? B::perlstring($value)
